@@ -7,6 +7,8 @@ import helmet from "helmet";
 import morgan from "morgan";
 import connectDB from "./database/connection";
 import { CustomRequest, ServerError } from "./types";
+import apiRoutes from "./routes/api";
+import aiRoutes from "./routes/openAI";
 
 const app = express();
 const PORT: number = parseInt(process.env.PORT || "3000", 10);
@@ -36,9 +38,8 @@ app.get("/health", (req: CustomRequest, res: Response) => {
   });
 });
 
-// API routes
-import apiRoutes from "./routes/api";
 app.use("/api", apiRoutes);
+app.use("/api", aiRoutes);
 
 // 404 handler
 app.use((req: CustomRequest, res: Response) => {
