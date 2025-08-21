@@ -23,12 +23,14 @@ export interface ApiResponse<T = any> {
 
 export interface UserResponse {
   id: string | Types.ObjectId;
+  name: string;
   email: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface CreateUserRequest {
+  name: string;
   email: string;
   password: string;
 }

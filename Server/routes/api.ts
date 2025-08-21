@@ -1,6 +1,7 @@
 import express, { Response } from "express";
 import mongoose from "mongoose";
 import User, { IUser } from "../models/User";
+import { OAuth2Client } from "google-auth-library";
 import {
   CustomRequest,
   TypedCustomRequest,
@@ -11,6 +12,7 @@ import {
 } from "../types";
 
 const router = express.Router();
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // GET /api/status
 router.get(
@@ -52,6 +54,7 @@ router.get(
         count: users.length,
         data: users.map((user: IUser) => ({
           id: user._id.toString(),
+          name: user.name,
           email: user.email,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
@@ -75,12 +78,12 @@ router.post(
     res: Response<ApiResponse<UserResponse>>
   ) => {
     try {
-      const { email, password } = req.body;
+      const { name, email, password } = req.body;
 
-      if (!email || !password) {
+      if (!name || !email || !password) {
         return res.status(400).json({
           success: false,
-          error: "Email and password are required",
+          error: "Name, email and password are required",
         });
       }
 
@@ -93,7 +96,7 @@ router.post(
         });
       }
 
-      const user = new User({ email, password });
+      const user = new User({ name, email, password });
       await user.save();
 
       res.status(201).json({
@@ -101,6 +104,7 @@ router.post(
         message: "User registered successfully",
         data: {
           id: user._id.toString(),
+          name: user.name,
           email: user.email,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
@@ -164,6 +168,7 @@ router.post(
         message: "User signed in successfully",
         data: {
           id: user._id.toString(),
+          name: user.name,
           email: user.email,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
@@ -175,6 +180,61 @@ router.post(
         success: false,
         error: "Failed to sign in user",
       });
+    }
+    return;
+  }
+);
+
+// POST /api/google-signin - Verify Google ID token and upsert user
+router.post(
+  "/google-signin",
+  async (
+    req: TypedCustomRequest<{ idToken: string }>,
+    res: Response<ApiResponse<UserResponse>>
+  ) => {
+    try {
+      const { idToken } = req.body;
+      if (!idToken) {
+        return res
+          .status(400)
+          .json({ success: false, error: "idToken required" });
+      }
+
+      const ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+      if (!payload?.email) {
+        return res
+          .status(401)
+          .json({ success: false, error: "Invalid Google token" });
+      }
+
+      const email = payload.email;
+      const name = payload.name || email.split("@")[0];
+
+      // Find or create user
+      let user = await User.findOne({ email });
+      if (!user) {
+        user = new User({ name, email, password: "" });
+        await user.save();
+      }
+
+      res.json({
+        success: true,
+        message: "Google sign-in successful",
+        data: {
+          id: user._id.toString(),
+          name: user.name,
+          email: user.email,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        },
+      });
+    } catch (error) {
+      console.error("Error during Google sign-in:", error);
+      res.status(401).json({ success: false, error: "Google sign-in failed" });
     }
     return;
   }

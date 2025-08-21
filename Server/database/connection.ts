@@ -4,7 +4,7 @@ import config from "../config";
 const connectDB = async (): Promise<void> => {
   try {
     if (!config.mongoUri) {
-      console.warn("⚠️  MONGO_URI not provided, skipping database connection");
+      console.warn("⚠️ MONGO_URI not provided, skipping database connection");
       return;
     }
 

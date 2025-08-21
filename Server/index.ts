@@ -1,12 +1,12 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express, { Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import dotenv from "dotenv";
 import connectDB from "./database/connection";
 import { CustomRequest, ServerError } from "./types";
-
-dotenv.config();
 
 const app = express();
 const PORT: number = parseInt(process.env.PORT || "3000", 10);

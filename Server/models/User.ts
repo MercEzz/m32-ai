@@ -2,6 +2,7 @@ import mongoose, { Document, Schema, Types } from "mongoose";
 
 export interface IUser extends Document {
   _id: Types.ObjectId;
+  name: string;
   email: string;
   password: string;
   createdAt: Date;
@@ -10,6 +11,13 @@ export interface IUser extends Document {
 
 const userSchema = new Schema<IUser>(
   {
+    name: {
+      type: String,
+      required: [true, "Name is required"],
+      trim: true,
+      minlength: [2, "Name must be at least 2 characters long"],
+      maxlength: [100, "Name must be at most 100 characters long"],
+    },
     email: {
       type: String,
       required: [true, "Email is required"],
