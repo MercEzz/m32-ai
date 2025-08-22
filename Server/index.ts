@@ -8,7 +8,7 @@ import morgan from "morgan";
 import connectDB from "./database/connection";
 import { CustomRequest, ServerError } from "./types";
 import apiRoutes from "./routes/api";
-import aiRoutes from "./routes/openAI";
+import llmRoutes from "./routes/llm";
 
 const app = express();
 const PORT: number = parseInt(process.env.PORT || "3000", 10);
@@ -39,7 +39,7 @@ app.get("/health", (req: CustomRequest, res: Response) => {
 });
 
 app.use("/api", apiRoutes);
-app.use("/api", aiRoutes);
+app.use("/api", llmRoutes);
 
 // 404 handler
 app.use((req: CustomRequest, res: Response) => {
