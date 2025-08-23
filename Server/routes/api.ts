@@ -2,6 +2,7 @@ import express, { Response } from "express";
 import mongoose from "mongoose";
 import User, { IUser } from "../models/User";
 import { OAuth2Client } from "google-auth-library";
+import { createSession, clearSession } from "../middleware/session";
 import {
   CustomRequest,
   TypedCustomRequest,
@@ -99,6 +100,9 @@ router.post(
       const user = new User({ name, email, password });
       await user.save();
 
+      // Create session for the newly registered user
+      const sessionId = createSession(user._id.toString());
+
       res.status(201).json({
         success: true,
         message: "User registered successfully",
@@ -108,6 +112,7 @@ router.post(
           email: user.email,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
+          sessionId: sessionId,
         },
       });
     } catch (error) {
@@ -163,6 +168,9 @@ router.post(
         });
       }
 
+      // Create session for the user
+      const sessionId = createSession(user._id.toString());
+
       res.json({
         success: true,
         message: "User signed in successfully",
@@ -172,6 +180,7 @@ router.post(
           email: user.email,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
+          sessionId: sessionId,
         },
       });
     } catch (error) {
@@ -221,6 +230,9 @@ router.post(
         await user.save();
       }
 
+      // Create session for the user
+      const sessionId = createSession(user._id.toString());
+
       res.json({
         success: true,
         message: "Google sign-in successful",
@@ -230,11 +242,47 @@ router.post(
           email: user.email,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
+          sessionId: sessionId,
         },
       });
     } catch (error) {
       console.error("Error during Google sign-in:", error);
       res.status(401).json({ success: false, error: "Google sign-in failed" });
+    }
+    return;
+  }
+);
+
+// POST /api/logout - Clear user session
+router.post(
+  "/logout",
+  async (
+    req: TypedCustomRequest<{ sessionId: string }>,
+    res: Response<ApiResponse<{ message: string }>>
+  ) => {
+    try {
+      const { sessionId } = req.body;
+      
+      if (!sessionId) {
+        return res.status(400).json({
+          success: false,
+          error: "Session ID is required",
+        });
+      }
+
+      clearSession(sessionId);
+
+      res.json({
+        success: true,
+        message: "Logged out successfully",
+        data: { message: "Session cleared" },
+      });
+    } catch (error) {
+      console.error("Error during logout:", error);
+      res.status(500).json({
+        success: false,
+        error: "Logout failed",
+      });
     }
     return;
   }

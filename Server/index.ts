@@ -1,83 +1,51 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import express, { Response, NextFunction } from "express";
+import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import connectDB from "./database/connection";
-import { CustomRequest, ServerError } from "./types";
+import { createServer } from "http";
+import config from "./config";
 import apiRoutes from "./routes/api";
 import llmRoutes from "./routes/llm";
+import connectDB from "./database/connection";
+import { initializeWebSocket } from "./websocket";
 
 const app = express();
-const PORT: number = parseInt(process.env.PORT || "3000", 10);
+const server = createServer(app);
+
+// Initialize WebSocket
+const wsManager = initializeWebSocket(server);
+
+// Make WebSocket manager available globally
+app.set("wsManager", wsManager);
 
 // Middleware
-app.use(helmet()); // Security headers
-app.use(cors()); // Enable CORS
-app.use(morgan("combined")); // Logging
-app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
+app.use(helmet());
+app.use(cors());
+app.use(morgan("combined"));
+app.use(express.json());
 
-// Basic route
-app.get("/", (req: CustomRequest, res: Response) => {
-  res.json({
-    message: "Welcome to m32-chatbot API",
-    status: "running",
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Health check endpoint
-app.get("/health", (req: CustomRequest, res: Response) => {
-  res.json({
-    status: "healthy",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  });
-});
-
+// Routes
 app.use("/api", apiRoutes);
-app.use("/api", llmRoutes);
+app.use("/api/llm", llmRoutes);
 
-// 404 handler
-app.use((req: CustomRequest, res: Response) => {
-  res.status(404).json({
-    error: "Route not found",
-    path: req.originalUrl,
-  });
+app.get("/", (req, res) => {
+  res.json({ message: "M32 AI Server is running!" });
 });
 
-// Global error handler
-app.use(
-  (err: ServerError, req: CustomRequest, res: Response, next: NextFunction) => {
-    console.error("Error:", err);
-    res.status(err.status || 500).json({
-      error: err.message || "Internal server error",
-      ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
-    });
-  }
-);
+const PORT = config.port || 3000;
 
-// Start server
-const startServer = async (): Promise<void> => {
-  try {
-    // Connect to MongoDB
-    await connectDB();
-
-    // Start the server
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📱 Environment: ${process.env.NODE_ENV || "development"}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+// Connect to database and start server
+connectDB()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+      console.log(`WebSocket server initialized`);
     });
-  } catch (error) {
-    console.error("❌ Failed to start server:", error);
+  })
+  .catch((error) => {
+    console.error("Failed to connect to database:", error);
     process.exit(1);
-  }
-};
-
-startServer();
-
-export default app;
+  });

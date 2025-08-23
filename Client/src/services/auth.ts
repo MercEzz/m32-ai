@@ -8,6 +8,7 @@ export interface UserResponse {
   email: string;
   createdAt: string | Date;
   updatedAt: string | Date;
+  sessionId?: string;
 }
 
 export interface RegisterRequest {
@@ -27,6 +28,7 @@ const handleResponse = (response: ApiResponse<UserResponse>) => ({
   email: response.data!.email,
   createdAt: response.data!.createdAt,
   updatedAt: response.data!.updatedAt,
+  sessionId: response.data!.sessionId,
 });
 
 export const authApi = createApi({
@@ -60,6 +62,14 @@ export const authApi = createApi({
       }),
       transformResponse: handleResponse,
     }),
+    logout: builder.mutation<{ message: string }, { sessionId: string }>({
+      query: ({ sessionId }) => ({
+        url: "logout",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: { sessionId },
+      }),
+    }),
   }),
 });
 
@@ -67,4 +77,5 @@ export const {
   useRegisterUserMutation,
   useSignInUserMutation,
   useGoogleSignInMutation,
+  useLogoutMutation,
 } = authApi;

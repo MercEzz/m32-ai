@@ -3,6 +3,7 @@ interface Config {
   nodeEnv?: string;
   mongoUri?: string;
   openAIKey?: string;
+  perplexityKey?: string;
 }
 
 const config: Config = {
@@ -10,6 +11,7 @@ const config: Config = {
   nodeEnv: process.env.NODE_ENV,
   mongoUri: process.env.MONGO_URI,
   openAIKey: process.env.OPENAI_API_KEY,
+  perplexityKey: process.env.PERPLEXITY_KEY,
 };
 
 export default config;

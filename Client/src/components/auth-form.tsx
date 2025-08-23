@@ -1,6 +1,8 @@
 import type React from "react";
 
 import { useEffect, useState, useCallback } from "react";
+import { useDispatch } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,10 +20,14 @@ import {
   useRegisterUserMutation,
   useSignInUserMutation,
   useGoogleSignInMutation,
+  type UserResponse,
 } from "@/services/auth";
+import { setAuth } from "@/store/authSlice";
 import { toast } from "sonner";
 
 export function AuthForm() {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
@@ -145,9 +151,32 @@ export function AuthForm() {
     ).google?.accounts.id.prompt();
   };
 
+  // Handle successful authentication
+  const handleAuthSuccess = useCallback(
+    (userData: UserResponse) => {
+      if (userData?.sessionId) {
+        dispatch(
+          setAuth({
+            user: {
+              id: userData.id,
+              name: userData.name,
+              email: userData.email,
+              createdAt: userData.createdAt,
+              updatedAt: userData.updatedAt,
+            },
+            sessionId: userData.sessionId,
+          })
+        );
+        navigate("/dashboard");
+      }
+    },
+    [dispatch, navigate]
+  );
+
   useEffect(() => {
     if (registerRes) {
-      toast.success("Success");
+      toast.success("Account created successfully");
+      handleAuthSuccess(registerRes);
     }
     if (registerErr) {
       const err = registerErr as
@@ -163,10 +192,12 @@ export function AuthForm() {
         "Something went wrong";
       toast.error(message);
     }
-  }, [registerRes, registerErr]);
+  }, [registerRes, registerErr, handleAuthSuccess]);
+
   useEffect(() => {
     if (signInRes) {
       toast.success("Signed in successfully");
+      handleAuthSuccess(signInRes);
     }
     if (signInErr) {
       const err = signInErr as
@@ -182,10 +213,12 @@ export function AuthForm() {
         "Sign in failed";
       toast.error(m);
     }
-  }, [signInRes, signInErr]);
+  }, [signInRes, signInErr, handleAuthSuccess]);
+
   useEffect(() => {
     if (googleRes) {
       toast.success("Google sign-in successful");
+      handleAuthSuccess(googleRes);
     }
     if (googleErr) {
       const err = googleErr as
@@ -201,10 +234,10 @@ export function AuthForm() {
         "Google sign-in failed";
       toast.error(m);
     }
-  }, [googleRes, googleErr]);
+  }, [googleRes, googleErr, handleAuthSuccess]);
 
   return (
-    <Card className="w-full bg-card border-border shadow-lg">
+    <Card className="w-md mx-auto bg-card border-border shadow-lg">
       <CardHeader className="space-y-1 text-center">
         <CardTitle className="text-2xl font-semibold text-card-foreground">
           {isLogin ? "Welcome back" : "Create account"}
