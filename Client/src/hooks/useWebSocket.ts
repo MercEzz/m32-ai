@@ -24,7 +24,7 @@ export const useWebSocket = () => {
     if (!sessionId) return;
 
     const socketInstance = io(
-      import.meta.env.VITE_API_URL || "http://localhost:3000",
+      import.meta.env.VITE_BE_URL || "http://localhost:3000",
       {
         transports: ["websocket", "polling"],
         timeout: 20000,
