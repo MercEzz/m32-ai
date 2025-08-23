@@ -14,7 +14,7 @@ export interface ChatResponse {
 export const llmApi = createApi({
   reducerPath: "llmApi",
   baseQuery: fetchBaseQuery({ 
-    baseUrl: "http://localhost:3000/api/llm/",
+    baseUrl: `${import.meta.env.VITE_BE_URL || "http://localhost:3000"}/api/llm/`,
     prepareHeaders: (headers, { getState }) => {
       const state = getState() as RootState;
       const sessionId = state.auth.sessionId;

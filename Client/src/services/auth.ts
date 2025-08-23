@@ -33,7 +33,9 @@ const handleResponse = (response: ApiResponse<UserResponse>) => ({
 
 export const authApi = createApi({
   reducerPath: "authApi",
-  baseQuery: fetchBaseQuery({ baseUrl: "http://localhost:3000/api/" }),
+  baseQuery: fetchBaseQuery({ 
+    baseUrl: `${import.meta.env.VITE_BE_URL || "http://localhost:3000"}/api/` 
+  }),
   endpoints: (builder) => ({
     registerUser: builder.mutation<UserResponse, RegisterRequest>({
       query: (payload) => ({
