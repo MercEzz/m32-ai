@@ -1,5 +1,5 @@
-import type { Request } from "express";
-import type { Types } from "mongoose";
+import { Request } from "express";
+import { Types } from "mongoose";
 
 // Extend Express Request interface for custom properties
 export interface CustomRequest extends Request {
