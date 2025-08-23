@@ -31,6 +31,7 @@ function App() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-between">
       <Routes>
+        <Route path="/" element={<Navigate to="/auth" />} />
         <Route
           path="/auth"
           element={
