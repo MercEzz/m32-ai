@@ -84,16 +84,32 @@ export function AuthForm() {
     }
   };
 
-  // Google Identity Services minimal types and handlers
+  // Google Identity Services types and handlers
   type GoogleCredential = { credential: string };
   type GoogleInitOptions = {
     client_id: string;
     callback: (response: GoogleCredential) => void;
+    auto_select?: boolean;
+    cancel_on_tap_outside?: boolean;
+    use_fedcm_for_prompt?: boolean;
+    ux_mode?: 'popup' | 'redirect';
+    context?: 'signin' | 'signup' | 'use';
+  };
+  type GooglePromptNotification = {
+    isNotDisplayed: () => boolean;
+    getNotDisplayedReason: () => string;
+    isSkippedMoment: () => boolean;
+    isDismissedMoment: () => boolean;
+  };
+  
+  type GoogleAccounts = {
+    id: {
+      initialize: (options: GoogleInitOptions) => void;
+      prompt: (callback?: (notification: GooglePromptNotification) => void) => void;
+    };
   };
   type GoogleObject = {
-    accounts: {
-      id: { initialize: (o: GoogleInitOptions) => void; prompt: () => void };
-    };
+    accounts: GoogleAccounts;
   };
 
   const handleGoogleCredential = useCallback(
@@ -117,38 +133,145 @@ export function AuthForm() {
   );
 
   useEffect(() => {
-    let mounted = true;
-    const ensureScript = async () => {
-      const w = window as unknown as { google?: GoogleObject };
-      if (!w.google) {
-        await new Promise<void>((resolve, reject) => {
-          const s = document.createElement("script");
-          s.src = "https://accounts.google.com/gsi/client";
-          s.async = true;
-          s.defer = true;
-          s.onload = () => resolve();
-          s.onerror = () => reject(new Error("Failed to load Google script"));
-          document.body.appendChild(s);
-        });
+    let isInitialized = false;
+    let retryTimeoutId: NodeJS.Timeout | null = null;
+
+    const initializeGoogle = () => {
+      // Clear any existing error when attempting initialization
+      setFormError("");
+
+      const google = (window as Window & { google?: GoogleObject }).google;
+
+      if (!import.meta.env.VITE_GOOGLE_CLIENT_ID) {
+        console.error("VITE_GOOGLE_CLIENT_ID environment variable is not set");
+        setFormError("Google sign-in configuration is missing");
+        return;
       }
-      if (!mounted) return;
-      (
-        window as unknown as { google?: GoogleObject }
-      ).google?.accounts.id.initialize({
-        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID as string,
-        callback: handleGoogleCredential,
-      });
+
+      if (google?.accounts?.id && !isInitialized) {
+        try {
+          google.accounts.id.initialize({
+            client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+            callback: handleGoogleCredential,
+            auto_select: false,
+            cancel_on_tap_outside: true,
+            use_fedcm_for_prompt: false,
+            context: "signin",
+          });
+          isInitialized = true;
+          console.log("Google OAuth initialized successfully");
+        } catch (error) {
+          console.error("Google OAuth initialization failed:", error);
+          setFormError("Google sign-in initialization failed");
+        }
+      } else if (!google?.accounts?.id) {
+        // Wait for script to load with exponential backoff
+        const retryCount =
+          (
+            initializeGoogle as typeof initializeGoogle & {
+              retryCount?: number;
+            }
+          ).retryCount || 0;
+        if (retryCount < 10) {
+          (
+            initializeGoogle as typeof initializeGoogle & {
+              retryCount?: number;
+            }
+          ).retryCount = retryCount + 1;
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
+
+          retryTimeoutId = setTimeout(() => {
+            initializeGoogle();
+          }, delay);
+        } else {
+          console.error(
+            "Google OAuth script failed to load after multiple attempts"
+          );
+          setFormError("Google sign-in is currently unavailable");
+        }
+      }
     };
-    void ensureScript();
+
+    // Add script load event listener
+    const handleScriptLoad = () => {
+      console.log("Google GSI script loaded");
+      // Clear any retry timeout since script loaded successfully
+      if (retryTimeoutId) {
+        clearTimeout(retryTimeoutId);
+        retryTimeoutId = null;
+      }
+      initializeGoogle();
+    };
+
+    const handleScriptError = (event: Event) => {
+      console.error("Google GSI script failed to load", event);
+      setFormError(
+        "Failed to load Google sign-in. Please check your connection."
+      );
+    };
+
+    // Check if script is already loaded
+    const existingScript = document.querySelector(
+      'script[src="https://accounts.google.com/gsi/client"]'
+    ) as HTMLScriptElement;
+
+    if (existingScript) {
+      // Script exists, check if Google object is available
+      if ((window as Window & { google?: GoogleObject }).google) {
+        initializeGoogle();
+      } else {
+        // Script exists but Google object not ready, wait for load
+        existingScript.addEventListener("load", handleScriptLoad);
+        existingScript.addEventListener("error", handleScriptError);
+      }
+    } else {
+      // Create script element if not found
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      script.crossOrigin = "anonymous";
+      script.addEventListener("load", handleScriptLoad);
+      script.addEventListener("error", handleScriptError);
+      document.head.appendChild(script);
+    }
+
     return () => {
-      mounted = false;
+      // Cleanup
+      if (retryTimeoutId) {
+        clearTimeout(retryTimeoutId);
+      }
+
+      const script = document.querySelector(
+        'script[src="https://accounts.google.com/gsi/client"]'
+      ) as HTMLScriptElement;
+
+      if (script) {
+        script.removeEventListener("load", handleScriptLoad);
+        script.removeEventListener("error", handleScriptError);
+      }
     };
   }, [handleGoogleCredential]);
 
   const handleGoogleAuth = () => {
-    (
-      window as unknown as { google?: GoogleObject }
-    ).google?.accounts.id.prompt();
+    // Clear any existing errors
+    setFormError("");
+
+    const google = (window as unknown as { google?: GoogleObject }).google;
+    if (google?.accounts?.id) {
+      try {
+        // Trigger the Google sign-in prompt
+        google.accounts.id.prompt();
+      } catch (error) {
+        console.error("Google sign-in prompt failed:", error);
+        setFormError("Google sign-in failed to start. Please try again.");
+      }
+    } else {
+      console.error("Google OAuth not initialized");
+      setFormError(
+        "Google sign-in is not ready. Please refresh the page and try again."
+      );
+    }
   };
 
   // Handle successful authentication

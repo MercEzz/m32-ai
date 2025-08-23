@@ -203,31 +203,82 @@ router.post(
   ) => {
     try {
       const { idToken } = req.body;
+      
       if (!idToken) {
-        return res
-          .status(400)
-          .json({ success: false, error: "idToken required" });
+        return res.status(400).json({ 
+          success: false, 
+          error: "Google ID token is required" 
+        });
       }
 
+      if (!process.env.GOOGLE_CLIENT_ID) {
+        console.error("GOOGLE_CLIENT_ID environment variable is not set");
+        return res.status(500).json({
+          success: false,
+          error: "Google OAuth is not properly configured"
+        });
+      }
+
+      // Verify the Google ID token
       const ticket = await googleClient.verifyIdToken({
         idToken,
         audience: process.env.GOOGLE_CLIENT_ID,
       });
+      
       const payload = ticket.getPayload();
-      if (!payload?.email) {
-        return res
-          .status(401)
-          .json({ success: false, error: "Invalid Google token" });
+      
+      if (!payload) {
+        return res.status(401).json({ 
+          success: false, 
+          error: "Invalid Google token payload" 
+        });
+      }
+
+      if (!payload.email) {
+        return res.status(401).json({ 
+          success: false, 
+          error: "Email not found in Google token" 
+        });
+      }
+
+      if (!payload.email_verified) {
+        return res.status(401).json({ 
+          success: false, 
+          error: "Google email is not verified" 
+        });
       }
 
       const email = payload.email;
       const name = payload.name || email.split("@")[0];
+      const picture = payload.picture;
 
       // Find or create user
       let user = await User.findOne({ email });
       if (!user) {
-        user = new User({ name, email, password: "" });
+        // Create new user for Google OAuth
+        user = new User({ 
+          name, 
+          email, 
+          password: "", // Empty password for OAuth users
+          googleId: payload.sub,
+          profilePicture: picture
+        });
         await user.save();
+        console.log(`New Google OAuth user created: ${email}`);
+      } else {
+        // Update existing user's Google info if needed
+        let updated = false;
+        if (!user.googleId && payload.sub) {
+          user.googleId = payload.sub;
+          updated = true;
+        }
+        if (!user.profilePicture && picture) {
+          user.profilePicture = picture;
+          updated = true;
+        }
+        if (updated) {
+          await user.save();
+        }
       }
 
       // Create session for the user
@@ -247,7 +298,28 @@ router.post(
       });
     } catch (error) {
       console.error("Error during Google sign-in:", error);
-      res.status(401).json({ success: false, error: "Google sign-in failed" });
+      
+      // More specific error handling
+      if (error instanceof Error) {
+        if (error.message.includes('Token used too early') || 
+            error.message.includes('Token used too late')) {
+          return res.status(401).json({ 
+            success: false, 
+            error: "Google token has expired or is not yet valid" 
+          });
+        }
+        if (error.message.includes('Wrong number of segments')) {
+          return res.status(401).json({ 
+            success: false, 
+            error: "Invalid Google token format" 
+          });
+        }
+      }
+      
+      res.status(401).json({ 
+        success: false, 
+        error: "Google sign-in failed. Please try again." 
+      });
     }
     return;
   }
