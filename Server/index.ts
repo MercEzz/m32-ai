@@ -22,30 +22,43 @@ const wsManager = initializeWebSocket(server);
 app.set("wsManager", wsManager);
 
 // Middleware
-app.use(helmet({
-  crossOriginEmbedderPolicy: false,
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://accounts.google.com", "https://www.googleapis.com"],
-      frameSrc: ["https://accounts.google.com"],
+app.use(
+  helmet({
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: [
+          "'self'",
+          "https://accounts.google.com",
+          "https://www.googleapis.com",
+        ],
+        frameSrc: ["https://accounts.google.com"],
+      },
     },
-  },
-}));
+  })
+);
 
-app.use(cors({ 
-  origin: [
-    process.env.CLIENT_URL || "http://localhost:5173",
-    "https://accounts.google.com",
-    "https://www.googleapis.com"
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-session-id', 'X-Requested-With']
-}));
+app.use(
+  cors({
+    origin: [
+      process.env.CLIENT_URL || "http://localhost:5173",
+      "https://accounts.google.com",
+      "https://www.googleapis.com",
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-session-id",
+      "X-Requested-With",
+    ],
+  })
+);
 
 app.use(morgan("combined"));
 app.use(express.json());

@@ -1,5 +1,4 @@
 import type React from "react";
-
 import { useEffect, useState, useCallback } from "react";
 import { useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
@@ -65,11 +64,7 @@ export function AuthForm() {
           setFormError("Passwords do not match");
           return;
         }
-        registerUser({
-          name: name.trim(),
-          email,
-          password,
-        }).unwrap();
+        registerUser({ name: name.trim(), email, password }).unwrap();
       }
     } catch (err: unknown) {
       let message = "Request failed";
@@ -84,197 +79,7 @@ export function AuthForm() {
     }
   };
 
-  // Google Identity Services types and handlers
-  type GoogleCredential = { credential: string };
-  type GoogleInitOptions = {
-    client_id: string;
-    callback: (response: GoogleCredential) => void;
-    auto_select?: boolean;
-    cancel_on_tap_outside?: boolean;
-    use_fedcm_for_prompt?: boolean;
-    ux_mode?: 'popup' | 'redirect';
-    context?: 'signin' | 'signup' | 'use';
-  };
-  type GooglePromptNotification = {
-    isNotDisplayed: () => boolean;
-    getNotDisplayedReason: () => string;
-    isSkippedMoment: () => boolean;
-    isDismissedMoment: () => boolean;
-  };
-  
-  type GoogleAccounts = {
-    id: {
-      initialize: (options: GoogleInitOptions) => void;
-      prompt: (callback?: (notification: GooglePromptNotification) => void) => void;
-    };
-  };
-  type GoogleObject = {
-    accounts: GoogleAccounts;
-  };
-
-  const handleGoogleCredential = useCallback(
-    async (resp: GoogleCredential) => {
-      setFormError("");
-      try {
-        await googleSignIn({ idToken: resp.credential }).unwrap();
-      } catch (err: unknown) {
-        let message = "Google sign-in failed";
-        if (typeof err === "object" && err !== null) {
-          const e = err as {
-            data?: { error?: string; message?: string };
-            error?: string;
-          };
-          message = e?.data?.error || e?.data?.message || e?.error || message;
-        }
-        setFormError(message);
-      }
-    },
-    [googleSignIn]
-  );
-
-  useEffect(() => {
-    let isInitialized = false;
-    let retryTimeoutId: NodeJS.Timeout | null = null;
-
-    const initializeGoogle = () => {
-      // Clear any existing error when attempting initialization
-      setFormError("");
-
-      const google = (window as Window & { google?: GoogleObject }).google;
-
-      if (!import.meta.env.VITE_GOOGLE_CLIENT_ID) {
-        console.error("VITE_GOOGLE_CLIENT_ID environment variable is not set");
-        setFormError("Google sign-in configuration is missing");
-        return;
-      }
-
-      if (google?.accounts?.id && !isInitialized) {
-        try {
-          google.accounts.id.initialize({
-            client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-            callback: handleGoogleCredential,
-            auto_select: false,
-            cancel_on_tap_outside: true,
-            use_fedcm_for_prompt: false,
-            context: "signin",
-          });
-          isInitialized = true;
-          console.log("Google OAuth initialized successfully");
-        } catch (error) {
-          console.error("Google OAuth initialization failed:", error);
-          setFormError("Google sign-in initialization failed");
-        }
-      } else if (!google?.accounts?.id) {
-        // Wait for script to load with exponential backoff
-        const retryCount =
-          (
-            initializeGoogle as typeof initializeGoogle & {
-              retryCount?: number;
-            }
-          ).retryCount || 0;
-        if (retryCount < 10) {
-          (
-            initializeGoogle as typeof initializeGoogle & {
-              retryCount?: number;
-            }
-          ).retryCount = retryCount + 1;
-          const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
-
-          retryTimeoutId = setTimeout(() => {
-            initializeGoogle();
-          }, delay);
-        } else {
-          console.error(
-            "Google OAuth script failed to load after multiple attempts"
-          );
-          setFormError("Google sign-in is currently unavailable");
-        }
-      }
-    };
-
-    // Add script load event listener
-    const handleScriptLoad = () => {
-      console.log("Google GSI script loaded");
-      // Clear any retry timeout since script loaded successfully
-      if (retryTimeoutId) {
-        clearTimeout(retryTimeoutId);
-        retryTimeoutId = null;
-      }
-      initializeGoogle();
-    };
-
-    const handleScriptError = (event: Event) => {
-      console.error("Google GSI script failed to load", event);
-      setFormError(
-        "Failed to load Google sign-in. Please check your connection."
-      );
-    };
-
-    // Check if script is already loaded
-    const existingScript = document.querySelector(
-      'script[src="https://accounts.google.com/gsi/client"]'
-    ) as HTMLScriptElement;
-
-    if (existingScript) {
-      // Script exists, check if Google object is available
-      if ((window as Window & { google?: GoogleObject }).google) {
-        initializeGoogle();
-      } else {
-        // Script exists but Google object not ready, wait for load
-        existingScript.addEventListener("load", handleScriptLoad);
-        existingScript.addEventListener("error", handleScriptError);
-      }
-    } else {
-      // Create script element if not found
-      const script = document.createElement("script");
-      script.src = "https://accounts.google.com/gsi/client";
-      script.async = true;
-      script.defer = true;
-      script.crossOrigin = "anonymous";
-      script.addEventListener("load", handleScriptLoad);
-      script.addEventListener("error", handleScriptError);
-      document.head.appendChild(script);
-    }
-
-    return () => {
-      // Cleanup
-      if (retryTimeoutId) {
-        clearTimeout(retryTimeoutId);
-      }
-
-      const script = document.querySelector(
-        'script[src="https://accounts.google.com/gsi/client"]'
-      ) as HTMLScriptElement;
-
-      if (script) {
-        script.removeEventListener("load", handleScriptLoad);
-        script.removeEventListener("error", handleScriptError);
-      }
-    };
-  }, [handleGoogleCredential]);
-
-  const handleGoogleAuth = () => {
-    // Clear any existing errors
-    setFormError("");
-
-    const google = (window as unknown as { google?: GoogleObject }).google;
-    if (google?.accounts?.id) {
-      try {
-        // Trigger the Google sign-in prompt
-        google.accounts.id.prompt();
-      } catch (error) {
-        console.error("Google sign-in prompt failed:", error);
-        setFormError("Google sign-in failed to start. Please try again.");
-      }
-    } else {
-      console.error("Google OAuth not initialized");
-      setFormError(
-        "Google sign-in is not ready. Please refresh the page and try again."
-      );
-    }
-  };
-
-  // Handle successful authentication
+  // ✅ common success handler
   const handleAuthSuccess = useCallback(
     (userData: UserResponse) => {
       if (userData?.sessionId) {
@@ -296,24 +101,33 @@ export function AuthForm() {
     [dispatch, navigate]
   );
 
+  // ✅ Initialize Google Identity Services
+  useEffect(() => {
+    const g = (window as any).google;
+    if (g?.accounts?.id) {
+      console.log(import.meta.env.VITE_GOOGLE_CLIENT_ID as string, "clientt");
+      g.accounts.id.initialize({
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID as string,
+        callback: (response: { credential: string }) => {
+          googleSignIn({ idToken: response.credential });
+        },
+      });
+      g.accounts.id.renderButton(
+        document.getElementById("googleSignInDiv"),
+        { theme: "filled_black", size: "large" } // customize as needed
+      );
+    }
+  }, [googleSignIn]);
+
+  // handle responses
   useEffect(() => {
     if (registerRes) {
       toast.success("Account created successfully");
       handleAuthSuccess(registerRes);
     }
     if (registerErr) {
-      const err = registerErr as
-        | import("@reduxjs/toolkit").SerializedError
-        | import("@reduxjs/toolkit/query").FetchBaseQueryError;
-      const message =
-        (err as import("@reduxjs/toolkit").SerializedError).message ||
-        (
-          err as import("@reduxjs/toolkit/query").FetchBaseQueryError & {
-            data?: { error?: string };
-          }
-        ).data?.error ||
-        "Something went wrong";
-      toast.error(message);
+      const err = registerErr as any;
+      toast.error(err?.data?.error || err?.message || "Something went wrong");
     }
   }, [registerRes, registerErr, handleAuthSuccess]);
 
@@ -323,18 +137,8 @@ export function AuthForm() {
       handleAuthSuccess(signInRes);
     }
     if (signInErr) {
-      const err = signInErr as
-        | import("@reduxjs/toolkit").SerializedError
-        | import("@reduxjs/toolkit/query").FetchBaseQueryError;
-      const m =
-        (err as import("@reduxjs/toolkit").SerializedError).message ||
-        (
-          err as import("@reduxjs/toolkit/query").FetchBaseQueryError & {
-            data?: { error?: string };
-          }
-        ).data?.error ||
-        "Sign in failed";
-      toast.error(m);
+      const err = signInErr as any;
+      toast.error(err?.data?.error || err?.message || "Sign in failed");
     }
   }, [signInRes, signInErr, handleAuthSuccess]);
 
@@ -344,18 +148,8 @@ export function AuthForm() {
       handleAuthSuccess(googleRes);
     }
     if (googleErr) {
-      const err = googleErr as
-        | import("@reduxjs/toolkit").SerializedError
-        | import("@reduxjs/toolkit/query").FetchBaseQueryError;
-      const m =
-        (err as import("@reduxjs/toolkit").SerializedError).message ||
-        (
-          err as import("@reduxjs/toolkit/query").FetchBaseQueryError & {
-            data?: { error?: string };
-          }
-        ).data?.error ||
-        "Google sign-in failed";
-      toast.error(m);
+      const err = googleErr as any;
+      toast.error(err?.data?.error || err?.message || "Google sign-in failed");
     }
   }, [googleRes, googleErr, handleAuthSuccess]);
 
@@ -373,32 +167,8 @@ export function AuthForm() {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <Button
-          variant="outline"
-          className="w-full h-11 border-border hover:bg-accent hover:text-accent-foreground bg-transparent"
-          onClick={handleGoogleAuth}
-          disabled={isGoogleSigningIn}
-        >
-          <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
-            <path
-              fill="currentColor"
-              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-            />
-            <path
-              fill="currentColor"
-              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-            />
-            <path
-              fill="currentColor"
-              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-            />
-            <path
-              fill="currentColor"
-              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-            />
-          </svg>
-          Continue with Google
-        </Button>
+        {/* ✅ Google Sign-In button (Google renders it automatically) */}
+        <div id="googleSignInDiv" className="flex justify-center mb-4"></div>
 
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
@@ -417,19 +187,18 @@ export function AuthForm() {
               <Label htmlFor="name" className="text-card-foreground">
                 Name
               </Label>
-              <div className="relative">
-                <Input
-                  id="name"
-                  type="text"
-                  placeholder="Enter your name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="bg-input border-border focus:ring-ring"
-                  required
-                />
-              </div>
+              <Input
+                id="name"
+                type="text"
+                placeholder="Enter your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="bg-input border-border focus:ring-ring"
+                required
+              />
             </div>
           )}
+
           <div className="space-y-2">
             <Label htmlFor="email" className="text-card-foreground">
               Email
@@ -484,29 +253,15 @@ export function AuthForm() {
               <Label htmlFor="confirmPassword" className="text-card-foreground">
                 Confirm Password
               </Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="confirmPassword"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Confirm your password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="pl-10 bg-input border-border focus:ring-ring"
-                  required
-                />
-              </div>
-            </div>
-          )}
-
-          {isLogin && (
-            <div className="flex justify-end">
-              <Button
-                variant="link"
-                className="px-0 text-secondary hover:text-secondary/80"
-              >
-                Forgot password?
-              </Button>
+              <Input
+                id="confirmPassword"
+                type={showPassword ? "text" : "password"}
+                placeholder="Confirm your password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="pl-10 bg-input border-border focus:ring-ring"
+                required
+              />
             </div>
           )}
 

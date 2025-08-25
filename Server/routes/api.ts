@@ -203,20 +203,17 @@ router.post(
   ) => {
     try {
       const { idToken } = req.body;
-      
+
       if (!idToken) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "Google ID token is required" 
-        });
+        return res
+          .status(400)
+          .json({ success: false, error: "ID token required" });
       }
 
       if (!process.env.GOOGLE_CLIENT_ID) {
-        console.error("GOOGLE_CLIENT_ID environment variable is not set");
-        return res.status(500).json({
-          success: false,
-          error: "Google OAuth is not properly configured"
-        });
+        return res
+          .status(500)
+          .json({ success: false, error: "OAuth not configured" });
       }
 
       // Verify the Google ID token
@@ -224,67 +221,43 @@ router.post(
         idToken,
         audience: process.env.GOOGLE_CLIENT_ID,
       });
-      
       const payload = ticket.getPayload();
-      
-      if (!payload) {
-        return res.status(401).json({ 
-          success: false, 
-          error: "Invalid Google token payload" 
-        });
+
+      if (!payload?.email || !payload.email_verified) {
+        return res
+          .status(401)
+          .json({ success: false, error: "Invalid Google account" });
       }
 
-      if (!payload.email) {
-        return res.status(401).json({ 
-          success: false, 
-          error: "Email not found in Google token" 
-        });
-      }
+      const { email, name = email.split("@")[0], picture, sub } = payload;
 
-      if (!payload.email_verified) {
-        return res.status(401).json({ 
-          success: false, 
-          error: "Google email is not verified" 
-        });
-      }
+      // ✅ Fix: Don't update googleId in both $set and $setOnInsert
+      let user = await User.findOneAndUpdate(
+        { email },
+        {
+          $setOnInsert: {
+            name,
+            email,
+            password: "", // no password for OAuth
+            googleId: sub,
+          },
+          $set: {
+            profilePicture: picture, // only update profile pic if it changes
+          },
+        },
+        { upsert: true, new: true }
+      );
 
-      const email = payload.email;
-      const name = payload.name || email.split("@")[0];
-      const picture = payload.picture;
-
-      // Find or create user
-      let user = await User.findOne({ email });
-      if (!user) {
-        // Create new user for Google OAuth
-        user = new User({ 
-          name, 
-          email, 
-          password: "", // Empty password for OAuth users
-          googleId: payload.sub,
-          profilePicture: picture
-        });
+      // If user existed but didn't have googleId yet, set it
+      if (!user.googleId) {
+        user.googleId = sub;
         await user.save();
-        console.log(`New Google OAuth user created: ${email}`);
-      } else {
-        // Update existing user's Google info if needed
-        let updated = false;
-        if (!user.googleId && payload.sub) {
-          user.googleId = payload.sub;
-          updated = true;
-        }
-        if (!user.profilePicture && picture) {
-          user.profilePicture = picture;
-          updated = true;
-        }
-        if (updated) {
-          await user.save();
-        }
       }
 
-      // Create session for the user
+      // Create session
       const sessionId = createSession(user._id.toString());
 
-      res.json({
+      return res.json({
         success: true,
         message: "Google sign-in successful",
         data: {
@@ -293,35 +266,15 @@ router.post(
           email: user.email,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
-          sessionId: sessionId,
+          sessionId,
         },
       });
     } catch (error) {
-      console.error("Error during Google sign-in:", error);
-      
-      // More specific error handling
-      if (error instanceof Error) {
-        if (error.message.includes('Token used too early') || 
-            error.message.includes('Token used too late')) {
-          return res.status(401).json({ 
-            success: false, 
-            error: "Google token has expired or is not yet valid" 
-          });
-        }
-        if (error.message.includes('Wrong number of segments')) {
-          return res.status(401).json({ 
-            success: false, 
-            error: "Invalid Google token format" 
-          });
-        }
-      }
-      
-      res.status(401).json({ 
-        success: false, 
-        error: "Google sign-in failed. Please try again." 
-      });
+      console.error("Google sign-in error:", error);
+      return res
+        .status(401)
+        .json({ success: false, error: "Google sign-in failed" });
     }
-    return;
   }
 );
 
@@ -334,7 +287,7 @@ router.post(
   ) => {
     try {
       const { sessionId } = req.body;
-      
+
       if (!sessionId) {
         return res.status(400).json({
           success: false,
